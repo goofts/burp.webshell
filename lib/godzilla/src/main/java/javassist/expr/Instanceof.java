@@ -1,0 +1,109 @@
+package javassist.expr;
+
+import javassist.CannotCompileException;
+import javassist.ClassPool;
+import javassist.CtBehavior;
+import javassist.CtClass;
+import javassist.NotFoundException;
+import javassist.bytecode.BadBytecode;
+import javassist.bytecode.Bytecode;
+import javassist.bytecode.CodeAttribute;
+import javassist.bytecode.CodeIterator;
+import javassist.bytecode.MethodInfo;
+import javassist.bytecode.Opcode;
+import javassist.compiler.CompileError;
+import javassist.compiler.Javac;
+import javassist.compiler.JvstCodeGen;
+import javassist.compiler.JvstTypeChecker;
+import javassist.compiler.ProceedHandler;
+import javassist.compiler.ast.ASTList;
+
+public class Instanceof extends Expr {
+    protected Instanceof(int pos, CodeIterator i, CtClass declaring, MethodInfo m) {
+        super(pos, i, declaring, m);
+    }
+
+    @Override // javassist.expr.Expr
+    public CtBehavior where() {
+        return super.where();
+    }
+
+    @Override // javassist.expr.Expr
+    public int getLineNumber() {
+        return super.getLineNumber();
+    }
+
+    @Override // javassist.expr.Expr
+    public String getFileName() {
+        return super.getFileName();
+    }
+
+    public CtClass getType() throws NotFoundException {
+        return this.thisClass.getClassPool().getCtClass(getConstPool().getClassInfo(this.iterator.u16bitAt(this.currentPos + 1)));
+    }
+
+    @Override // javassist.expr.Expr
+    public CtClass[] mayThrow() {
+        return super.mayThrow();
+    }
+
+    @Override // javassist.expr.Expr
+    public void replace(String statement) throws CannotCompileException {
+        this.thisClass.getClassFile();
+        getConstPool();
+        int pos = this.currentPos;
+        int index = this.iterator.u16bitAt(pos + 1);
+        Javac jc = new Javac(this.thisClass);
+        ClassPool cp = this.thisClass.getClassPool();
+        CodeAttribute ca = this.iterator.get();
+        try {
+            CtClass[] params = {cp.get("java.lang.Object")};
+            CtClass retType = CtClass.booleanType;
+            int paramVar = ca.getMaxLocals();
+            jc.recordParams("java.lang.Object", params, true, paramVar, withinStatic());
+            int retVar = jc.recordReturnType(retType, true);
+            jc.recordProceed(new ProceedForInstanceof(index));
+            jc.recordType(getType());
+            checkResultValue(retType, statement);
+            Bytecode bytecode = jc.getBytecode();
+            storeStack(params, true, paramVar, bytecode);
+            jc.recordLocalVariables(ca, pos);
+            bytecode.addConstZero(retType);
+            bytecode.addStore(retVar, retType);
+            jc.compileStmnt(statement);
+            bytecode.addLoad(retVar, retType);
+            replace0(pos, bytecode, 3);
+        } catch (CompileError e) {
+            throw new CannotCompileException(e);
+        } catch (NotFoundException e2) {
+            throw new CannotCompileException(e2);
+        } catch (BadBytecode e3) {
+            throw new CannotCompileException("broken method");
+        }
+    }
+
+    static class ProceedForInstanceof implements ProceedHandler {
+        int index;
+
+        ProceedForInstanceof(int i) {
+            this.index = i;
+        }
+
+        @Override // javassist.compiler.ProceedHandler
+        public void doit(JvstCodeGen gen, Bytecode bytecode, ASTList args) throws CompileError {
+            if (gen.getMethodArgsLength(args) != 1) {
+                throw new CompileError("$proceed() cannot take more than one parameter for instanceof");
+            }
+            gen.atMethodArgs(args, new int[1], new int[1], new String[1]);
+            bytecode.addOpcode(Opcode.INSTANCEOF);
+            bytecode.addIndex(this.index);
+            gen.setType(CtClass.booleanType);
+        }
+
+        @Override // javassist.compiler.ProceedHandler
+        public void setReturnType(JvstTypeChecker c, ASTList args) throws CompileError {
+            c.atMethodArgs(args, new int[1], new int[1], new String[1]);
+            c.setType(CtClass.booleanType);
+        }
+    }
+}

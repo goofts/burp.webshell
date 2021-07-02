@@ -1,0 +1,45 @@
+package javassist.convert;
+
+import javassist.CtClass;
+import javassist.CtField;
+import javassist.bytecode.BadBytecode;
+import javassist.bytecode.CodeAttribute;
+import javassist.bytecode.CodeIterator;
+import javassist.bytecode.ConstPool;
+import javassist.bytecode.Opcode;
+
+public final class TransformWriteField extends TransformReadField {
+    public TransformWriteField(Transformer next, CtField field, String methodClassname, String methodName) {
+        super(next, field, methodClassname, methodName);
+    }
+
+    @Override // javassist.convert.Transformer, javassist.convert.TransformReadField
+    public int transform(CtClass tclazz, int pos, CodeIterator iterator, ConstPool cp) throws BadBytecode {
+        String typedesc;
+        int c = iterator.byteAt(pos);
+        if ((c == 181 || c == 179) && (typedesc = isField(tclazz.getClassPool(), cp, this.fieldClass, this.fieldname, this.isPrivate, iterator.u16bitAt(pos + 1))) != null) {
+            if (c == 179) {
+                CodeAttribute ca = iterator.get();
+                iterator.move(pos);
+                char c0 = typedesc.charAt(0);
+                if (c0 == 'J' || c0 == 'D') {
+                    int pos2 = iterator.insertGap(3);
+                    iterator.writeByte(1, pos2);
+                    iterator.writeByte(91, pos2 + 1);
+                    iterator.writeByte(87, pos2 + 2);
+                    ca.setMaxStack(ca.getMaxStack() + 2);
+                } else {
+                    int pos3 = iterator.insertGap(2);
+                    iterator.writeByte(1, pos3);
+                    iterator.writeByte(95, pos3 + 1);
+                    ca.setMaxStack(ca.getMaxStack() + 1);
+                }
+                pos = iterator.next();
+            }
+            int methodref = cp.addMethodrefInfo(cp.addClassInfo(this.methodClassname), this.methodName, "(Ljava/lang/Object;" + typedesc + ")V");
+            iterator.writeByte(Opcode.INVOKESTATIC, pos);
+            iterator.write16bit(methodref, pos + 1);
+        }
+        return pos;
+    }
+}
